@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Alphabet Typing Timer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        
+        .game-container {
+            flex: 2;
+            padding: 20px;
+        }
+        
+        .leaderboard {
+            flex: 1;
+            padding: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-left: 20px;
+        }
+        
+        .alphabet {
+            font-size: 48px;
+            letter-spacing: 8px;
+            margin: 20px 0;
+            font-weight: bold;
+        }
+        
+        .letter {
+            opacity: 0.3;
+            transition: opacity 0.2s;
+        }
+        
+        .completed {
+            opacity: 1;
+        }
+        
+        .timer {
+            font-size: 36px;
+            margin: 20px 0;
+        }
+        
+        button {
+            font-size: 18px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        .leaderboard h2 {
+            margin-top: 0;
+        }
+        
+        .leaderboard ol {
+            padding-left: 20px;
+        }
+        
+        .leaderboard li {
+            margin: 10px 0;
+            font-size: 18px;
+        }
+        
+        .completed-message {
+            color: #4CAF50;
+            font-size: 24px;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .username-input {
+            margin: 20px 0;
+        }
+
+        .username-input input {
+            padding: 8px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Alphabet Typing Timer</h1>
+        <div class="username-input">
+            <input type="text" id="username" placeholder="Enter your username">
+        </div>
+        <div class="timer">Time: 0.000</div>
+        <div class="alphabet">
+            abcdefghijklmnopqrstuvwxyz
+        </div>
+        <button onclick="resetGame()">Reset</button>
+        <div class="completed-message">Completed! Your time: <span class="final-time"></span></div>
+    </div>
+    
+    <div class="leaderboard">
+        <h2>Global Top 10 Times</h2>
+        <ol id="highScores"></ol>
+    </div>
+
+    <script>
+        let startTime = null;
+        let timer = null;
+        let currentIndex = 0;
+        let isGameActive = false;
+        
+        const alphabetDiv = document.querySelector('.alphabet');
+        alphabetDiv.innerHTML = 'abcdefghijklmnopqrstuvwxyz'.split('').map(letter => 
+            `<span class="letter">${letter}</span>`
+        ).join('');
+        
+        const letters = document.querySelectorAll('.letter');
+        const timerDisplay = document.querySelector('.timer');
+        const completedMessage = document.querySelector('.completed-message');
+        const finalTimeSpan = document.querySelector('.final-time');
+        const usernameInput = document.getElementById('username');
+        
+        // Fetch and display high scores
+        async function updateHighScores() {
+            try {
+                const response = await fetch('http://localhost:3000/scores');
+                const scores = await response.json();
+                const highScoresList = document.getElementById('highScores');
+                highScoresList.innerHTML = scores
+                    .map(score => {
+                        const date = new Date(score.date).toLocaleDateString();
+                        return `<li>${score.username}: ${score.time.toFixed(3)}s (${date})</li>`;
+                    })
+                    .join('');
+            } catch (err) {
+                console.error('Failed to fetch scores:', err);
+            }
+        }
+        
+        function startGame() {
+            if (!isGameActive && usernameInput.value.trim()) {
+                isGameActive = true;
+                startTime = Date.now();
+                updateTimer();
+            } else if (!usernameInput.value.trim()) {
+                alert('Please enter a username before starting!');
+            }
+        }
+        
+        function updateTimer() {
+            if (isGameActive) {
+                const elapsed = (Date.now() - startTime) / 1000;
+                timerDisplay.textContent = `Time: ${elapsed.toFixed(3)}`;
+                timer = requestAnimationFrame(updateTimer);
+            }
+        }
+        
+        async function completeGame() {
+            const finalTime = (Date.now() - startTime) / 1000;
+            
+            // Update display
+            isGameActive = false;
+            cancelAnimationFrame(timer);
+            finalTimeSpan.textContent = finalTime.toFixed(3);
+            completedMessage.style.display = 'block';
+            
+            // Save score to server
+            try {
+                await fetch('http://localhost:3000/scores', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: usernameInput.value,
+                        time: finalTime
+                    })
+                });
+                
+                // Update the display
+                updateHighScores();
+            } catch (err) {
+                console.error('Failed to save score:', err);
+            }
+        }
+        
+        function resetGame() {
+            isGameActive = false;
+            currentIndex = 0;
+            cancelAnimationFrame(timer);
+            startTime = null;
+            timerDisplay.textContent = 'Time: 0.000';
+            letters.forEach(letter => letter.classList.remove('completed'));
+            completedMessage.style.display = 'none';
+        }
+        
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'Space') {
+                resetGame();
+                return;
+            }
+            
+            const expectedLetter = 'abcdefghijklmnopqrstuvwxyz'[currentIndex];
+            
+            if (event.key === expectedLetter) {
+                if (!isGameActive) {
+                    startGame();
+                }
+                
+                letters[currentIndex].classList.add('completed');
+                currentIndex++;
+                
+                if (currentIndex === 26) {
+                    completeGame();
+                }
+            }
+        });
+        
+        // Initial high scores display
+        updateHighScores();
+    </script>
+</body>
+</html>
