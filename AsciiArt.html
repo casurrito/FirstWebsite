@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image to ASCII Art Converter</title>
+    <style>
+        /* Previous styles remain the same */
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .control-group h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .result-container {
+            overflow: auto;
+            position: relative;
+            background-color: black;
+            border-radius: 4px;
+            margin: 20px 0;
+            max-height: 70vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        .result {
+            white-space: pre;
+            font-family: monospace;
+            font-size: 8px;
+            line-height: 1;
+            padding: 20px;
+            transform-origin: center;
+            display: inline-block;
+            margin: auto;
+        }
+        input[type="file"] {
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px 0;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .download-buttons {
+            display: none;
+            gap: 10px;
+        }
+        label {
+            margin-right: 10px;
+        }
+        input[type="number"] {
+            width: 80px;
+            padding: 4px;
+        }
+        .color-preview {
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ccc;
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 10px;
+        }
+        .rgb-controls {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 5px;
+            align-items: center;
+        }
+        .zoom-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Image to ASCII Art Converter</h1>
+        <div class="controls">
+            <div class="control-group">
+                <h3>Image Input</h3>
+                <input type="file" id="imageInput" accept="image/*">
+                <input type="checkbox" id="invertColors">
+                <label for="invertColors">Invert Characters</label>
+            </div>
+            
+            <div class="control-group">
+                <h3>Size Controls</h3>
+                <label for="width">Width (characters):</label>
+                <input type="number" id="width" value="300" min="50" max="1000">
+                <label for="fontSize">Font Size:</label>
+                <input type="number" id="fontSize" value="8" min="4" max="16">
+            </div>
+
+            <div class="control-group">
+                <h3>Text Color</h3>
+                <div class="rgb-controls">
+                    <label for="textR">R:</label>
+                    <input type="range" id="textR" min="0" max="255" value="255">
+                    <label for="textG">G:</label>
+                    <input type="range" id="textG" min="0" max="255" value="255">
+                    <label for="textB">B:</label>
+                    <input type="range" id="textB" min="0" max="255" value="255">
+                </div>
+                <div class="color-preview" id="textColorPreview"></div>
+            </div>
+
+            <div class="control-group">
+                <h3>Background Color</h3>
+                <div class="rgb-controls">
+                    <label for="bgR">R:</label>
+                    <input type="range" id="bgR" min="0" max="255" value="0">
+                    <label for="bgG">G:</label>
+                    <input type="range" id="bgG" min="0" max="255" value="0">
+                    <label for="bgB">B:</label>
+                    <input type="range" id="bgB" min="0" max="255" value="0">
+                </div>
+                <div class="color-preview" id="bgColorPreview"></div>
+            </div>
+        </div>
+        
+        <div class="download-buttons" id="downloadButtons">
+            <button id="downloadTxtBtn">Download as TXT</button>
+            <button id="downloadPngBtn">Download as PNG</button>
+        </div>
+        
+        <div class="result-container" id="resultContainer">
+            <div id="result" class="result"></div>
+        </div>
+    </div>
+
+    <div class="zoom-controls">
+        <button onclick="adjustZoom(0.9)">-</button>
+        <button onclick="resetZoom()">Reset</button>
+        <button onclick="adjustZoom(1.1)">+</button>
+    </div>
+
+    <script>
+        const ASCII_CHARS = "@%#*+=-:. ";
+        const INVERTED_ASCII_CHARS = " .:=-+*#%@";
+        let currentZoom = 1;
+
+        function updateColors() {
+            const textR = document.getElementById('textR').value;
+            const textG = document.getElementById('textG').value;
+            const textB = document.getElementById('textB').value;
+            const bgR = document.getElementById('bgR').value;
+            const bgG = document.getElementById('bgG').value;
+            const bgB = document.getElementById('bgB').value;
+
+            const result = document.getElementById('result');
+            const resultContainer = document.getElementById('resultContainer');
+            
+            result.style.color = `rgb(${textR},${textG},${textB})`;
+            resultContainer.style.backgroundColor = `rgb(${bgR},${bgG},${bgB})`;
+            
+            document.getElementById('textColorPreview').style.backgroundColor = `rgb(${textR},${textG},${textB})`;
+            document.getElementById('bgColorPreview').style.backgroundColor = `rgb(${bgR},${bgG},${bgB})`;
+        }
+
+        function adjustZoom(factor) {
+            currentZoom *= factor;
+            const result = document.getElementById('result');
+            result.style.transform = `scale(${currentZoom})`;
+            centerContent();
+        }
+
+        function resetZoom() {
+            currentZoom = 1;
+            const result = document.getElementById('result');
+            result.style.transform = 'scale(1)';
+            centerContent();
+        }
+
+        function centerContent() {
+            const container = document.getElementById('resultContainer');
+            container.scrollTop = 0;
+        }
+
+        function resizeImage(image, newWidth) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            const ratio = image.height / image.width / (image.height > image.width ? 2.5 : 1.65);
+            const newHeight = Math.floor(newWidth * ratio);
+
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+
+            ctx.drawImage(image, 0, 0, newWidth, newHeight);
+            return ctx.getImageData(0, 0, newWidth, newHeight);
+        }
+
+        function getGrayscale(r, g, b) {
+            return Math.floor((0.299 * r + 0.587 * g + 0.114 * b));
+        }
+
+        function pixelsToAscii(imageData, invert) {
+            const chars = invert ? INVERTED_ASCII_CHARS : ASCII_CHARS;
+            let asciiStr = "";
+            
+            for (let i = 0; i < imageData.data.length; i += 4) {
+                const gray = getGrayscale(
+                    imageData.data[i],
+                    imageData.data[i + 1],
+                    imageData.data[i + 2]
+                );
+                asciiStr += chars[Math.floor(gray / 32)];
+                
+                if ((i/4 + 1) % imageData.width === 0) {
+                    asciiStr += "\n";
+                }
+            }
+            
+            return asciiStr;
+        }
+
+        function updateFontSize() {
+            const fontSize = document.getElementById('fontSize').value;
+            document.getElementById('result').style.fontSize = `${fontSize}px`;
+            centerContent();
+        }
+
+        function handleImage(e) {
+            const file = e.target?.files?.[0] || lastFile;
+            if (!file) return;
+            lastFile = file;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const width = parseInt(document.getElementById('width').value);
+                    const resizedImageData = resizeImage(img, width);
+                    const invert = document.getElementById('invertColors').checked;
+                    const asciiArt = pixelsToAscii(resizedImageData, invert);
+                    
+                    const resultDiv = document.getElementById('result');
+                    resultDiv.textContent = asciiArt;
+                    updateFontSize();
+                    updateColors();
+                    resetZoom();
+                    centerContent();
+                    
+                    document.getElementById('downloadButtons').style.display = 'flex';
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function downloadTextFile() {
+            const asciiArt = document.getElementById('result').textContent;
+            const blob = new Blob([asciiArt], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ascii_art.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadPNG() {
+            const result = document.getElementById('result');
+            const resultContainer = document.getElementById('resultContainer');
+            
+            // Create a canvas with the same dimensions as the result
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Get computed styles
+            const computedStyle = window.getComputedStyle(result);
+            const textColor = computedStyle.color;
+            const bgColor = window.getComputedStyle(resultContainer).backgroundColor;
+            const fontSize = computedStyle.fontSize;
+            const fontFamily = computedStyle.fontFamily;
+            
+            // Set canvas size
+            const lines = result.textContent.split('\n');
+            const maxLineLength = Math.max(...lines.map(line => line.length));
+            
+            // Calculate pixel dimensions based on font metrics
+            const tempSpan = document.createElement('span');
+            tempSpan.style.font = `${fontSize} ${fontFamily}`;
+            tempSpan.style.visibility = 'hidden';
+            tempSpan.textContent = 'A';
+            document.body.appendChild(tempSpan);
+            const charWidth = tempSpan.offsetWidth;
+            const charHeight = tempSpan.offsetHeight;
+            document.body.removeChild(tempSpan);
+            
+            canvas.width = maxLineLength * charWidth;
+            canvas.height = lines.length * charHeight;
+            
+            // Fill background
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw text
+            ctx.fillStyle = textColor;
+            ctx.font = `${fontSize} ${fontFamily}`;
+            ctx.textBaseline = 'top';
+            
+            lines.forEach((line, index) => {
+                ctx.fillText(line, 0, index * charHeight);
+            });
+            
+            // Download the image
+            const a = document.createElement('a');
+            a.href = canvas.toDataURL('image/png');
+            a.download = 'ascii_art.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        let lastFile = null;
+
+        // Event Listeners
+        document.getElementById('imageInput').addEventListener('change', handleImage);
+        document.getElementById('invertColors').addEventListener('change', handleImage);
+        document.getElementById('width').addEventListener('change', handleImage);
+        document.getElementById('fontSize').addEventListener('change', updateFontSize);
+        document.getElementById('downloadTxtBtn').addEventListener('click', downloadTextFile);
+        document.getElementById('downloadPngBtn').addEventListener('click', downloadPNG);
+
+        // Color control event listeners
+        ['textR', 'textG', 'textB', 'bgR', 'bgG', 'bgB'].forEach(id => {
+            document.getElementById(id).addEventListener('input', updateColors);
+        });
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image to ASCII Art Converter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .control-group h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .result-container {
+            overflow: hidden;
+            position: relative;
+            background-color: black;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .result {
+            white-space: pre;
+            font-family: monospace;
+            font-size: 8px;
+            line-height: 1;
+            padding: 20px;
+            transform-origin: 0 0;
+            display: inline-block;
+        }
+        input[type="file"] {
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px 0;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #downloadBtn {
+            display: none;
+        }
+        label {
+            margin-right: 10px;
+        }
+        input[type="number"] {
+            width: 80px;
+            padding: 4px;
+        }
+        .color-preview {
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ccc;
+            display: inline-block;
+            vertical-align: middle;
+            margin-left: 10px;
+        }
+        .rgb-controls {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 5px;
+            align-items: center;
+        }
+        .zoom-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Image to ASCII Art Converter</h1>
+        <div class="controls">
+            <div class="control-group">
+                <h3>Image Input</h3>
+                <input type="file" id="imageInput" accept="image/*">
+                <input type="checkbox" id="invertColors">
+                <label for="invertColors">Invert Characters</label>
+            </div>
+            
+            <div class="control-group">
+                <h3>Size Controls</h3>
+                <label for="width">Width (characters):</label>
+                <input type="number" id="width" value="300" min="50" max="1000">
+                <label for="fontSize">Font Size:</label>
+                <input type="number" id="fontSize" value="8" min="4" max="16">
+            </div>
+
+            <div class="control-group">
+                <h3>Text Color</h3>
+                <div class="rgb-controls">
+                    <label for="textR">R:</label>
+                    <input type="range" id="textR" min="0" max="255" value="255">
+                    <label for="textG">G:</label>
+                    <input type="range" id="textG" min="0" max="255" value="255">
+                    <label for="textB">B:</label>
+                    <input type="range" id="textB" min="0" max="255" value="255">
+                </div>
+                <div class="color-preview" id="textColorPreview"></div>
+            </div>
+
+            <div class="control-group">
+                <h3>Background Color</h3>
+                <div class="rgb-controls">
+                    <label for="bgR">R:</label>
+                    <input type="range" id="bgR" min="0" max="255" value="0">
+                    <label for="bgG">G:</label>
+                    <input type="range" id="bgG" min="0" max="255" value="0">
+                    <label for="bgB">B:</label>
+                    <input type="range" id="bgB" min="0" max="255" value="0">
+                </div>
+                <div class="color-preview" id="bgColorPreview"></div>
+            </div>
+        </div>
+        
+        <button id="downloadBtn">Download ASCII Art</button>
+        
+        <div class="result-container" id="resultContainer">
+            <div id="result" class="result"></div>
+        </div>
+    </div>
+
+    <div class="zoom-controls">
+        <button onclick="adjustZoom(0.9)">-</button>
+        <button onclick="resetZoom()">Reset</button>
+        <button onclick="adjustZoom(1.1)">+</button>
+    </div>
+
+    <script>
+        const ASCII_CHARS = "@%#*+=-:. ";
+        const INVERTED_ASCII_CHARS = " .:=-+*#%@";
+        let currentZoom = 1;
+
+        function updateColors() {
+            const textR = document.getElementById('textR').value;
+            const textG = document.getElementById('textG').value;
+            const textB = document.getElementById('textB').value;
+            const bgR = document.getElementById('bgR').value;
+            const bgG = document.getElementById('bgG').value;
+            const bgB = document.getElementById('bgB').value;
+
+            const result = document.getElementById('result');
+            const resultContainer = document.getElementById('resultContainer');
+            
+            result.style.color = `rgb(${textR},${textG},${textB})`;
+            resultContainer.style.backgroundColor = `rgb(${bgR},${bgG},${bgB})`;
+            
+            // Update color previews
+            document.getElementById('textColorPreview').style.backgroundColor = `rgb(${textR},${textG},${textB})`;
+            document.getElementById('bgColorPreview').style.backgroundColor = `rgb(${bgR},${bgG},${bgB})`;
+        }
+
+        function adjustZoom(factor) {
+            currentZoom *= factor;
+            document.getElementById('result').style.transform = `scale(${currentZoom})`;
+        }
+
+        function resetZoom() {
+            currentZoom = 1;
+            document.getElementById('result').style.transform = 'scale(1)';
+        }
+
+        function resizeImage(image, newWidth) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            const ratio = image.height / image.width / (image.height > image.width ? 2.5 : 1.65);
+            const newHeight = Math.floor(newWidth * ratio);
+
+            canvas.width = newWidth;
+            canvas.height = newHeight;
+
+            ctx.drawImage(image, 0, 0, newWidth, newHeight);
+            return ctx.getImageData(0, 0, newWidth, newHeight);
+        }
+
+        function getGrayscale(r, g, b) {
+            return Math.floor((0.299 * r + 0.587 * g + 0.114 * b));
+        }
+
+        function pixelsToAscii(imageData, invert) {
+            const chars = invert ? INVERTED_ASCII_CHARS : ASCII_CHARS;
+            let asciiStr = "";
+            
+            for (let i = 0; i < imageData.data.length; i += 4) {
+                const gray = getGrayscale(
+                    imageData.data[i],
+                    imageData.data[i + 1],
+                    imageData.data[i + 2]
+                );
+                asciiStr += chars[Math.floor(gray / 32)];
+                
+                if ((i/4 + 1) % imageData.width === 0) {
+                    asciiStr += "\n";
+                }
+            }
+            
+            return asciiStr;
+        }
+
+        function updateFontSize() {
+            const fontSize = document.getElementById('fontSize').value;
+            document.getElementById('result').style.fontSize = `${fontSize}px`;
+        }
+
+        function handleImage(e) {
+            const file = e.target?.files?.[0] || lastFile;
+            if (!file) return;
+            lastFile = file;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const width = parseInt(document.getElementById('width').value);
+                    const resizedImageData = resizeImage(img, width);
+                    const invert = document.getElementById('invertColors').checked;
+                    const asciiArt = pixelsToAscii(resizedImageData, invert);
+                    
+                    const resultDiv = document.getElementById('result');
+                    resultDiv.textContent = asciiArt;
+                    updateFontSize();
+                    updateColors();
+                    resetZoom();
+                    
+                    document.getElementById('downloadBtn').style.display = 'inline-block';
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function downloadAsciiArt() {
+            const asciiArt = document.getElementById('result').textContent;
+            const blob = new Blob([asciiArt], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ascii_art.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        let lastFile = null;
+
+        // Event Listeners
+        document.getElementById('imageInput').addEventListener('change', handleImage);
+        document.getElementById('invertColors').addEventListener('change', handleImage);
+        document.getElementById('width').addEventListener('change', handleImage);
+        document.getElementById('fontSize').addEventListener('change', updateFontSize);
+        document.getElementById('downloadBtn').addEventListener('click', downloadAsciiArt);
+
+        // Color control event listeners
+        ['textR', 'textG', 'textB', 'bgR', 'bgG', 'bgB'].forEach(id => {
+            document.getElementById(id).addEventListener('input', updateColors);
+        });
+    </script>
+</body>
+</html>
